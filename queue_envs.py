@@ -7,6 +7,7 @@ from __future__ import (absolute_import, division, print_function,
 from gym import Env, spaces
 from gym.envs.registration import register
 from gym.utils import seeding, colorize
+import sys
 import numpy as np
 
 
@@ -36,7 +37,7 @@ class QueueEnv(Env):
     SWITCH_TO_3 = 2
     SERVICE_QUEUE = 3
 
-    def categorical_sample(prob_n, np_random):
+    def categorical_sample(self, prob_n, np_random):
         """
         Sample from categorical distribution
         Each row specifies class probabilities
@@ -68,6 +69,9 @@ class QueueEnv(Env):
                        self.p_12:[0,1,1,0], self.p_13:[0,1,0,1], self.p_23:[0,0,1,1], \
                        self.p_123:[0,1,1,1], self.p_n:[0,0,0,0]}
 
+        self._reset()
+        self._seed(5)
+
 
     def _reset(self):
         """Reset the environment.
@@ -82,7 +86,8 @@ class QueueEnv(Env):
           3).
         """
 
-        self.state[0] = 1
+        self.state = [1,2,3,4]
+        self.last_action = 0
 
         return self.state
 
@@ -104,22 +109,20 @@ class QueueEnv(Env):
           with any additional information you deem useful.
         """
         
-        transitions = query_model(self.state, action)
+        transitions = self.query_model(self.state, action)
 
-        i = categorical_sample([t[0] for t in transitions], self.np_random)
+        i = self.categorical_sample([t[0] for t in transitions], self.np_random)
 
         prob, next_state, reward, is_terminal = transitions[i]
-        self.state = state
+        self.state = next_state
         self.last_action = action
 
-        return (nextstate, reward, is_terminal, {"prob" : prob})
+        return (next_state, reward, is_terminal, {"prob" : prob})
 
 
     def _render(self, mode='human', close=False):
         if close:
             return
-
-        outfile = StringIO() if mode == 'ansi' else sys.stdout
 
         q, s1, s2, s3 = self.state
 
@@ -130,11 +133,11 @@ class QueueEnv(Env):
             temp = colorize(u"\u2588 ", color[0]) if s1 >= i else "  "
             temp = temp + colorize(u"\u2588 ", color[1]) if s2 >= i else temp + "  "
             temp = temp + colorize(u"\u2588 ", color[2]) if s3 >= i else temp + "  "
-            outfile.write(temp)
+            print(temp)
 
-        outfile.write(get_action_name(self.last_action))
-
-        return outfile
+        print("Now at Queue {0}, n_queue1: {1}, n_queue2: {2}, n_queue3: {3}" \
+                .format(self.state[0], self.state[1], self.state[2], self.state[3]))
+        print("Curr action: {0}".format(self.get_action_name(self.last_action)))
 
     def _seed(self, seed=None):
         """Set the random seed.
@@ -170,7 +173,7 @@ class QueueEnv(Env):
         """
         
         reward = 0
-        if action == SERVICE_QUEUE:
+        if action == QueueEnv.SERVICE_QUEUE:
             if state[state[0]] > 1:
                 state[state[0]] -= 1
                 reward = 1
