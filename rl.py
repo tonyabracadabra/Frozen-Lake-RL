@@ -3,9 +3,11 @@ from __future__ import division, absolute_import
 from __future__ import print_function, unicode_literals
 
 import deeprl_hw1.lake_envs as lake_env
+import matplotlib.pyplot as plt
 import numpy as np
 import gym
 import time
+import timeit
 
 def evaluate_policy(env, gamma, policy, max_iterations=int(1e3), tol=1e-3):
     """Evaluate the value of a policy.
@@ -31,8 +33,8 @@ def evaluate_policy(env, gamma, policy, max_iterations=int(1e3), tol=1e-3):
 
     Returns
     -------
-    np.ndarray
-      The value for the given policy
+    np.ndarray, int
+      The value for the given policy, number of value iterations
     """
     
     #initializes value function to 0
@@ -50,7 +52,7 @@ def evaluate_policy(env, gamma, policy, max_iterations=int(1e3), tol=1e-3):
       if np.max(np.abs(prev_value_func-value_func)) < tol:
         break
 
-    return value_func
+    return value_func, i
 
 def one_hot_encode(env, policy):
   """One hot encode the policy
@@ -166,24 +168,22 @@ def policy_iteration(env, gamma, max_iterations=int(1e3), tol=1e-3):
        improvement iterations, and number of value iterations.
     """
 
-    # initialize the policy with random actions
-    # policy = np.random.randint(env.nA, size = env.nS)
-    # print(policy)
+    # initialize the policy with 0 actions
     policy = np.zeros(env.nS, dtype='int')
     value_func = np.zeros(env.nS)
 
-    for iteration in xrange(max_iterations):
+    val_iters = 0
+    for i in xrange(max_iterations):
       prev_policy = policy.copy()
-      value_func = evaluate_policy(env, gamma, policy)
+      value_func, n_value_i = evaluate_policy(env, gamma, policy)
+      val_iters += n_value_i
 
       changed, policy = improve_policy(env, gamma, value_func, policy)
-      print(policy)
 
       if not changed:
         break
-    print(iteration)
 
-    return policy, value_func, 0, 0
+    return policy, value_func, i, val_iters
 
 
 def value_iteration(env, gamma, max_iterations=int(1e3), tol=1e-3):
@@ -214,7 +214,7 @@ def value_iteration(env, gamma, max_iterations=int(1e3), tol=1e-3):
 
     value_func = np.zeros(env.nS)
 
-    for iteration in xrange(max_iterations):
+    for i in xrange(max_iterations):
       # shape = (nS, nA)
       prev_value_func = value_func.copy()
       q = np.einsum("ijk,ijk -> ij", env.T, env.R + gamma * value_func)
@@ -223,7 +223,7 @@ def value_iteration(env, gamma, max_iterations=int(1e3), tol=1e-3):
       if np.max(np.abs(value_func-prev_value_func)) < tol:
         break
 
-    return value_func, iteration
+    return value_func, i
 
 def print_policy(policy, action_names):
     """Print the policy in human-readable format.
@@ -241,12 +241,25 @@ def print_policy(policy, action_names):
 
     print(str_policy)
 
+def convert_to_letter_policy(env, policy):
+  letter_policy = []
+  for a in policy:
+    letter_policy.append(lake_env.action_names[a][0])
+  letter_policy = np.array(letter_policy).reshape(env.nrow, env.ncol)
+
+  for row in letter_policy:
+    print(' '.join(map(str,row)))
+
+  return letter_policy
+
 def main():
     # create the environment
     # env = gym.make('FrozenLake-v0')
     # env = gym.make('Queue-1-v0')
     # uncomment next line to try the deterministic version
-    env = gym.make('Deterministic-4x4-neg-reward-FrozenLake-v0')
+    # env = gym.make('Deterministic-4x4-neg-reward-FrozenLake-v0')
+    env = gym.make('Deterministic-8x8-FrozenLake-v0')
+    # env = gym.make('Stochastic-8x8-FrozenLake-v0')
 
     # print_env_info(env)
     # print_model_info(env, 0, lake_env.DOWN)
@@ -267,11 +280,25 @@ def main():
         env.T[state, action, :] /= np.sum(env.T[state, action, :])
 
     gamma = 0.9
-    opt_policy, value_func, _, _ = policy_iteration(env, gamma)
 
-    value_func, _ = value_iteration(env, gamma)
-    # opt_policy = value_function_to_policy(env, gamma, value_func)
-    print(opt_policy)
+    start = timeit.default_timer()
+    opt_policy, value_func, n_p_iters, n_val_iters = policy_iteration(env, gamma)
+    stop = timeit.default_timer()
+
+    print("The running time for policy iteration is {0}".format(stop-start))
+    letter_policy = convert_to_letter_policy(env, opt_policy)
+
+    print(n_p_iters)
+    print(n_val_iters)
+
+    start = timeit.default_timer()
+    value_func, n_val_iters = value_iteration(env, gamma)
+    opt_policy = value_function_to_policy(env, gamma, value_func)
+    stop = timeit.default_timer()
+    print("The running time for value iteration is {0}".format(stop-start))
+
+    letter_policy = convert_to_letter_policy(env, opt_policy)
+    print(n_val_iters)
 
     env.render()
     s, r, d, _= env.step(opt_policy[env.s])
@@ -279,7 +306,7 @@ def main():
       env.render()
       s, r, d, _ = env.step(opt_policy[s])
       time.sleep(1)
-
+    env.render()
 
     # print('Agent received total reward of: %f' % total_reward)
     # print('Agent took %d steps' % num_steps)
